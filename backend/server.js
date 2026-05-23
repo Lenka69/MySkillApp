@@ -46,9 +46,18 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({
+  res.status(200).json({
     message: 'My Skill API is healthy',
-    status: 'OK'
+    status: 'OK',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/warmup', (req, res) => {
+  res.status(200).json({
+    message: 'My Skill backend is awake',
+    status: 'READY',
+    timestamp: new Date().toISOString()
   });
 });
 
