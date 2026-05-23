@@ -1,23 +1,70 @@
-import React, { useContext, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 
-import api from '../services/api';
-import { AuthContext } from '../context/AuthContext';
+import api, { shouldRetryRequest, wakeServer } from '../services/api';
 
 export default function Register() {
+  const navigate = useNavigate();
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
 
-  const { login } = useContext(AuthContext);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [serverReady, setServerReady] = useState(false);
+  const [serverStatus, setServerStatus] = useState('Menyiapkan server Render...');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const prepareServer = async () => {
+      setServerReady(false);
+      setServerStatus('Menyiapkan server Render... Register pertama mungkin membutuhkan beberapa detik.');
+
+      const isReady = await wakeServer();
+
+      if (isReady) {
+        setServerReady(true);
+        setServerStatus('Server siap digunakan.');
+      } else {
+        setServerReady(true);
+        setServerStatus('Server sedang bangun. Silakan coba register, proses pertama mungkin sedikit lebih lama.');
+      }
+    };
+
+    prepareServer();
+  }, []);
+
+  const registerWithRetry = async () => {
+    try {
+      return await api.post('/auth/register', {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password
+      });
+    } catch (firstError) {
+      if (!shouldRetryRequest(firstError)) {
+        throw firstError;
+      }
+
+      setServerStatus('Server Render sedang bangun. Mencoba ulang register...');
+      await wakeServer();
+
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+
+      return await api.post('/auth/register', {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password
+      });
+    }
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setErrorMessage('');
 
-    if (!name || !email || !password || !confirmPassword) {
+    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
       setErrorMessage('Semua field wajib diisi.');
       return;
     }
@@ -33,15 +80,36 @@ export default function Register() {
     }
 
     try {
-      const response = await api.post('/auth/register', {
-        name,
-        email,
-        password
-      });
+      setLoading(true);
 
-      login(response.data.token, response.data.user);
+      const response = await registerWithRetry();
+
+      const token = response.data.token;
+      const user = response.data.user;
+
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+
+      if (user?.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
     } catch (error) {
-      setErrorMessage(error.response?.data?.message || 'Register gagal. Silakan coba lagi.');
+      console.error('REGISTER ERROR:', error.response?.data || error.message);
+
+      if (error.response) {
+        setErrorMessage(
+          error.response.data?.message ||
+            'Register gagal. Silakan coba lagi.'
+        );
+      } else {
+        setErrorMessage(
+          'Tidak bisa terhubung ke server. Server Render mungkin sedang bangun, silakan coba lagi beberapa detik.'
+        );
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -80,6 +148,22 @@ export default function Register() {
 
             <h2>Create Your Account</h2>
             <p>Daftar untuk mulai mengakses konten praktik teknik SMK.</p>
+          </div>
+
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 14,
+              background: serverReady ? '#ecfdf5' : '#eff6ff',
+              color: serverReady ? '#047857' : '#1d4ed8',
+              border: serverReady ? '1px solid #bbf7d0' : '1px solid #bfdbfe',
+              fontSize: 14,
+              fontWeight: 700,
+              lineHeight: 1.5
+            }}
+          >
+            {serverStatus}
           </div>
 
           {errorMessage && (
@@ -133,8 +217,8 @@ export default function Register() {
               />
             </div>
 
-            <button className="primary-button" type="submit">
-              Register
+            <button className="primary-button" type="submit" disabled={loading}>
+              {loading ? 'Memproses...' : serverReady ? 'Register' : 'Menyiapkan server...'}
             </button>
           </form>
 

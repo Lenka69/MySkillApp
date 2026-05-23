@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,12 +14,57 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import api from '../services/api';
+import api, { shouldRetryRequest, wakeServer } from '../services/api';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
   const [loading, setLoading] = useState(false);
+  const [serverReady, setServerReady] = useState(false);
+  const [serverStatus, setServerStatus] = useState('Menyiapkan server Render...');
+
+  useEffect(() => {
+    const prepareServer = async () => {
+      setServerReady(false);
+      setServerStatus('Menyiapkan server Render... Login pertama mungkin membutuhkan beberapa detik.');
+
+      const isReady = await wakeServer();
+
+      if (isReady) {
+        setServerReady(true);
+        setServerStatus('Server siap digunakan.');
+      } else {
+        setServerReady(true);
+        setServerStatus('Server sedang bangun. Silakan coba login, proses pertama mungkin sedikit lebih lama.');
+      }
+    };
+
+    prepareServer();
+  }, []);
+
+  const loginWithRetry = async () => {
+    try {
+      return await api.post('/auth/login', {
+        email: email.trim().toLowerCase(),
+        password
+      });
+    } catch (firstError) {
+      if (!shouldRetryRequest(firstError)) {
+        throw firstError;
+      }
+
+      setServerStatus('Server Render sedang bangun. Mencoba ulang login...');
+      await wakeServer();
+
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+
+      return await api.post('/auth/login', {
+        email: email.trim().toLowerCase(),
+        password
+      });
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -30,10 +75,7 @@ export default function LoginScreen({ navigation }) {
     try {
       setLoading(true);
 
-      const response = await api.post('/auth/login', {
-        email: email.trim().toLowerCase(),
-        password
-      });
+      const response = await loginWithRetry();
 
       const user = response.data.user;
 
@@ -56,7 +98,7 @@ export default function LoginScreen({ navigation }) {
       } else {
         Alert.alert(
           'Koneksi gagal',
-          'Tidak bisa terhubung ke backend. Pastikan backend berjalan, IP API benar, dan HP berada dalam jaringan yang sama dengan laptop.'
+          'Tidak bisa terhubung ke server. Server Render mungkin sedang bangun, silakan coba lagi beberapa detik.'
         );
       }
     } finally {
@@ -115,6 +157,22 @@ export default function LoginScreen({ navigation }) {
             Masuk untuk mengakses konten praktik My Skill.
           </Text>
 
+          <View
+            style={[
+              styles.serverStatusBox,
+              serverReady ? styles.serverReadyBox : styles.serverPreparingBox
+            ]}
+          >
+            <Text
+              style={[
+                styles.serverStatusText,
+                serverReady ? styles.serverReadyText : styles.serverPreparingText
+              ]}
+            >
+              {serverStatus}
+            </Text>
+          </View>
+
           <View style={styles.formGroup}>
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -150,7 +208,9 @@ export default function LoginScreen({ navigation }) {
             {loading ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.primaryButtonText}>Login</Text>
+              <Text style={styles.primaryButtonText}>
+                {serverReady ? 'Login' : 'Menyiapkan server...'}
+              </Text>
             )}
           </TouchableOpacity>
 
@@ -271,7 +331,31 @@ const styles = {
     color: '#64748b',
     fontSize: 15,
     lineHeight: 22,
-    marginBottom: 22
+    marginBottom: 18
+  },
+  serverStatusBox: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16
+  },
+  serverPreparingBox: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe'
+  },
+  serverReadyBox: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#bbf7d0'
+  },
+  serverStatusText: {
+    fontWeight: '800',
+    lineHeight: 20
+  },
+  serverPreparingText: {
+    color: '#1d4ed8'
+  },
+  serverReadyText: {
+    color: '#047857'
   },
   formGroup: {
     marginBottom: 14

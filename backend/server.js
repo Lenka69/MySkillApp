@@ -15,7 +15,6 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Izinkan request tanpa origin seperti Postman/curl/health check
     if (!origin) {
       return callback(null, true);
     }
@@ -40,8 +39,10 @@ app.options('*', cors(corsOptions));
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.json({
-    message: 'My Skill API is running'
+  res.status(200).json({
+    message: 'My Skill API is running',
+    status: 'OK',
+    timestamp: new Date().toISOString()
   });
 });
 
