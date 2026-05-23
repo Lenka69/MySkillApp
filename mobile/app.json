@@ -6,13 +6,22 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "android": {
-      "softwareKeyboardLayoutMode": "resize"
+      "package": "com.bagusrahmat.myskill",
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "backgroundColor": "#10b981"
+      }
     },
     "ios": {
       "supportsTablet": true
     },
     "web": {
       "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c416c74c-4f68-475f-96f4-5bf2b7b62b95"
+      }
     }
   }
 }
